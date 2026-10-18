@@ -1,0 +1,19 @@
+{
+  "name": "predge-agent-tools",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.18",
+    "@types/node": "^22.10.0",
+    "ai": "^7.0.143",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "zod": "^4.1.12"
+  }
+}

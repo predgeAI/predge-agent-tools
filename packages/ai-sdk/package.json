@@ -1,0 +1,39 @@
+{
+  "name": "@predge/ai-sdk",
+  "version": "0.1.0",
+  "description": "Predge tools for the Vercel AI SDK: signed settlement-risk checks for Polymarket markets (free) and x402-paid Polymarket data",
+  "license": "MIT",
+  "author": "Predge <hello@predge.io>",
+  "homepage": "https://github.com/predgeAI/predge-agent-tools/tree/main/packages/ai-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predgeAI/predge-agent-tools.git",
+    "directory": "packages/ai-sdk"
+  },
+  "bugs": "https://github.com/predgeAI/predge-agent-tools/issues",
+  "keywords": ["ai-sdk", "vercel-ai-sdk", "agents", "tools", "polymarket", "prediction-markets", "uma", "x402", "ed25519", "predge"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  },
+  "peerDependencies": {
+    "ai": ">=5.0.0"
+  }
+}
