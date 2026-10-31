@@ -77,7 +77,7 @@ export function decodePaymentRequired(header: string | null): PaymentRequired | 
 }
 
 /**
- * GET a URL; on HTTP 402, pay with an EIP-3009 USDC authorization (x402 v2 `exact` scheme) and retry once.
+ * GET a URL (or send `init.method` with `init.body`); on HTTP 402, pay with an EIP-3009 USDC authorization (x402 v2 `exact` scheme) and retry once.
  * Never pays more than `maxAtomic` (USDC atomic units, 6 decimals).
  */
 export async function fetchWithX402(
@@ -85,9 +85,12 @@ export async function fetchWithX402(
     signer: X402Signer,
     maxAtomic: bigint,
     fetchImpl: typeof fetch = fetch,
+    init: { method?: string; body?: string; headers?: Record<string, string> } = {},
 ): Promise<{ response: Response; paid: boolean }> {
-    const headers = { Accept: "application/json" };
-    const first = await fetchImpl(url, { headers });
+    const headers: Record<string, string> = { Accept: "application/json", ...(init.headers ?? {}) };
+    const request = (h: Record<string, string>) =>
+        fetchImpl(url, init.method ? { method: init.method, headers: h, body: init.body } : { headers: h });
+    const first = await request(headers);
     if (first.status !== 402) return { response: first, paid: false };
 
     const required = decodePaymentRequired(first.headers.get("payment-required"));
@@ -130,11 +133,9 @@ export async function fetchWithX402(
         accepted: req,
         payload: { authorization, signature },
     };
-    const paid = await fetchImpl(url, {
-        headers: {
-            ...headers,
-            "PAYMENT-SIGNATURE": Buffer.from(JSON.stringify(paymentPayload), "utf8").toString("base64"),
-        },
+    const paid = await request({
+        ...headers,
+        "PAYMENT-SIGNATURE": Buffer.from(JSON.stringify(paymentPayload), "utf8").toString("base64"),
     });
     return { response: paid, paid: true };
 }

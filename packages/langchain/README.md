@@ -1,8 +1,8 @@
 # @predge/langchain
 
-[Predge](https://predge.io) tools for [LangChain.js](https://js.langchain.com) and LangGraph.js. Before your agent trades, pays or settles on a Polymarket market, it can check whether that market's resolution is settled, disputed or at risk. Records are read live from UMA's Optimistic Oracle on Polygon and signed with ed25519. Every signature is verified against Predge's published key.
+Dispute and refund verdicts for AI-agent payments, as [LangChain.js](https://js.langchain.com) and LangGraph.js tools. When your agent pays for a call and the result looks wrong, it sends what was promised, what came back and what was paid, and gets a signed [Predge](https://predge.io) verdict: `delivered`, `not_delivered` or `inconclusive`, with reason codes and a refund recommendation. Every verdict is ed25519-signed and checked against Predge's published key.
 
-The free tools need no API key and no wallet.
+Also included: a free signed settlement-risk check for Polymarket markets (read live from UMA's Optimistic Oracle on Polygon) and x402-paid Polymarket data.
 
 ## Get a free key
 
@@ -39,13 +39,22 @@ import { createPredgeTools } from "@predge/langchain";
 
 const agent = createReactAgent({
   llm: new ChatOpenAI({ model: "gpt-5-mini" }),
-  tools: createPredgeTools(),
+  tools: createPredgeTools({ apiKey: process.env.PREDGE_KEY }), // free pilot key: https://predge.io/start
 });
 
 const result = await agent.invoke({
-  messages: [{ role: "user", content: "Check the settlement risk of Polymarket market 5608010." }],
+  messages: [
+    {
+      role: "user",
+      content:
+        "I paid $0.25 to https://api.example.com/v1/report for JSON with a `rows` field. " +
+        'It answered 200 with body {"error":"timeout"}. Ask Predge for a verdict and tell me if I should get a refund.',
+    },
+  ],
 });
 ```
+
+Without `apiKey` the tools read `PREDGE_KEY` from the environment. Without any key, `predge_request_verdict` is only returned when an account is configured (x402, below); the free tools need nothing. The refund is a recommendation the merchant executes. Predge does not move money.
 
 Each tool returns a JSON string.
 
@@ -60,12 +69,14 @@ const tools = createPredgeTools({
 });
 ```
 
-Payments use x402 v2 (`exact` scheme, EIP-3009 USDC authorization on Base). The tool pays only USDC on the account's chain and never more than `maxPaymentUsd` per call.
+With an account and no key, `predge_request_verdict` pays per verdict ($0.05 when the paid call is under $1; $0.50 at $1 or more, which needs `maxPaymentUsd: 0.5`). Payments use x402 v2 (`exact` scheme, EIP-3009 USDC authorization on Base). The tool pays only USDC on the account's chain and never more than `maxPaymentUsd` per call.
 
 ## Tools
 
 | Tool | Price | What it does |
 |---|---|---|
+| `predge_request_verdict` | free with a pilot key; else $0.05 (< $1) / $0.50 (>= $1) | Signed delivery verdict for a paid call: `delivered` / `not_delivered` / `inconclusive`, reason codes, per-check results, refund recommendation, `verify_url` |
+| `predge_get_verdict` | free | Reads a stored verdict by id (`vrd_...`) and checks its signature |
 | `predge_get_settlement_risk` | free | Signed settlement-risk record for a market: `risk_level` (`ok`, `watch`, `caution`, `resolved`), UMA state, disputes, signature check |
 | `predge_verify_record` | free | Verifies a Predge signed record offline against the pinned key |
 | `predge_get_settlement_estimate` | $0.02 | Same record plus `settlement_estimate` for a disputed market. Failed requests are not charged |
