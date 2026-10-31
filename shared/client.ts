@@ -8,6 +8,27 @@ export type PredgePluginOptions = {
     maxPaymentUsd?: number;
     /** Trusted ed25519 public keys (hex). Defaults to Predge's published attestation key. */
     trustedKeys?: string[];
+    /**
+     * Predge API key, sent as the `x-predge-key` header on verdict requests. A free 30-day pilot key is at
+     * https://predge.io/start . Defaults to the PREDGE_KEY environment variable. Without a key, verdicts are paid over x402.
+     */
+    apiKey?: string;
+};
+
+/** Header that carries a Predge API key (pilot / Desk key). */
+export const PREDGE_KEY_HEADER = "x-predge-key";
+/** A paid call of this many USD or more is a large-tier verdict (POST /v1/verdicts/large, $0.50). */
+export const LARGE_VERDICT_THRESHOLD_USD = 1;
+
+/** Body of POST /v1/verdicts: what was promised, what was delivered, and what was paid. */
+export type VerdictRequest = {
+    job: Json & { endpoint: string };
+    delivery: Json;
+    payment: Json & { amount_usd: number };
+    buyer_id?: string;
+    merchant_id?: string;
+    agent?: Json;
+    provider_agent?: Json;
 };
 
 type Json = Record<string, unknown>;
@@ -53,6 +74,30 @@ export function summarizeSettlementRisk(record: Json): Json {
     };
 }
 
+/** The fields of a signed verdict an agent needs to act on it. */
+export function summarizeVerdict(record: Json): Json {
+    const refund = (record.refund ?? {}) as Json;
+    return {
+        id: record.id,
+        verdict: record.verdict,
+        method: record.method,
+        reason_codes: record.reason_codes,
+        checks: record.checks,
+        refund_recommended: record.refund_recommended,
+        refund: {
+            recommended: refund.recommended ?? record.refund_recommended,
+            amount_usd: refund.amount_usd ?? record.refund_amount_usd,
+            from: refund.from,
+            to: refund.to,
+            status: refund.status,
+            instructions: refund.instructions,
+        },
+        issued_at: record.issued_at,
+        verify_url: record.verify_url,
+        fee: record.fee,
+    };
+}
+
 function apiError(status: number, data: Json | null, url: string) {
     return {
         error: true,
@@ -68,11 +113,96 @@ export class PredgeAPI {
     private readonly baseUrl: string;
     private readonly maxPaymentUsd: number;
     private readonly trustedKeys: string[];
+    readonly apiKey: string | undefined;
 
     constructor(options: PredgePluginOptions = {}) {
         this.baseUrl = (options.baseUrl ?? "https://api.predge.io").replace(/\/+$/, "");
         this.maxPaymentUsd = options.maxPaymentUsd ?? 0.05;
         this.trustedKeys = options.trustedKeys ?? [PREDGE_ATTESTATION_PUBLIC_KEY];
+        const envKey = typeof process !== "undefined" ? process.env?.PREDGE_KEY : undefined;
+        this.apiKey = (options.apiKey ?? envKey)?.trim() || undefined;
+    }
+
+    /**
+     * Ask Predge for a signed delivery verdict: was the paid work delivered as promised?
+     * Sends the key (x-predge-key) when one is configured; otherwise, or when the key has no free verdicts left
+     * (402), pays over x402 from the signer, never above maxPaymentUsd. Calls of $1 or more go to the large tier.
+     */
+    async requestVerdict(signer: X402Signer | undefined, request: VerdictRequest) {
+        const amount = Number(request.payment?.amount_usd);
+        const large = Number.isFinite(amount) && amount >= LARGE_VERDICT_THRESHOLD_USD;
+        const url = `${this.baseUrl}/v1/verdicts${large ? "/large" : ""}`;
+        const body = JSON.stringify(request);
+        const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+        if (this.apiKey) headers[PREDGE_KEY_HEADER] = this.apiKey;
+
+        let response: Response;
+        if (this.apiKey) {
+            response = await fetch(url, { method: "POST", headers, body });
+            if (response.status === 402 && !(signer && this.maxPaymentUsd > 0)) {
+                return {
+                    error: true,
+                    status: 402,
+                    message:
+                        "This key has no free verdicts left (pilot window over). Pay per verdict over x402 by configuring an EVM account, " +
+                        "or get a key at https://predge.io/start . Nothing was charged.",
+                    url,
+                };
+            }
+        } else {
+            if (this.maxPaymentUsd <= 0 || !signer) {
+                return {
+                    error: true,
+                    message:
+                        "A verdict needs a Predge key (free pilot key at https://predge.io/start, option apiKey or env PREDGE_KEY) " +
+                        "or an EVM account to pay over x402 ($0.05 under $1, $0.50 at $1 or more).",
+                };
+            }
+            response = new Response(null, { status: 402 });
+        }
+        if (response.status === 402 && signer) {
+            try {
+                ({ response } = await fetchWithX402(
+                    url,
+                    signer,
+                    BigInt(Math.floor(this.maxPaymentUsd * 1_000_000)),
+                    fetch,
+                    { method: "POST", body, headers },
+                ));
+            } catch (e) {
+                return { error: true, message: (e as Error).message, url };
+            }
+        }
+        const text = await response.text();
+        const data = parseJson(text);
+        if (!response.ok || !data) return apiError(response.status, data, url);
+        return { ...this.verdictResult(data, text, response), source: url };
+    }
+
+    /** Re-read a stored verdict by id (free, no key). Verifies its signature. */
+    async getVerdict(id: string) {
+        const url = `${this.baseUrl}/v1/verdicts/${encodeURIComponent(id)}`;
+        const response = await fetch(url, { headers: { Accept: "application/json" } });
+        const text = await response.text();
+        const data = parseJson(text);
+        if (!response.ok || !data) return apiError(response.status, data, url);
+        return { ...this.verdictResult(data, text, response), source: url };
+    }
+
+    private verdictResult(data: Json, text: string, response: Response) {
+        const paymentHeader = response.headers.get("payment-response");
+        let payment: unknown = null;
+        if (paymentHeader) {
+            payment = parseJson(Buffer.from(paymentHeader, "base64").toString("utf8")) ?? { raw: paymentHeader };
+        }
+        return {
+            ...summarizeVerdict(data),
+            signature: {
+                ...verifyPredgeRecord(data, this.trustedKeys),
+                bodySignature: verifyBodySignature(text, response.headers.get("x-predge-body-signature"), this.trustedKeys),
+            },
+            payment,
+        };
     }
 
     async getSettlementRisk(market: string) {

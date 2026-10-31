@@ -1,7 +1,7 @@
 {
   "name": "@predge/langchain",
-  "version": "0.1.0",
-  "description": "Predge tools for LangChain.js: signed settlement-risk checks for Polymarket markets (free) and x402-paid Polymarket data",
+  "version": "0.2.0",
+  "description": "Dispute and refund verdicts for AI-agent payments: Predge tools for LangChain.js, plus signed Polymarket settlement-risk checks",
   "license": "MIT",
   "author": "Predge <hello@predge.io>",
   "homepage": "https://github.com/predgeAI/predge-agent-tools/tree/main/packages/langchain#readme",
@@ -11,7 +11,7 @@
     "directory": "packages/langchain"
   },
   "bugs": "https://github.com/predgeAI/predge-agent-tools/issues",
-  "keywords": ["langchain", "langgraph", "agents", "tools", "polymarket", "prediction-markets", "uma", "x402", "ed25519", "predge"],
+  "keywords": ["agent-payments", "disputes", "refunds", "verdicts", "langchain", "langgraph", "agents", "tools", "polymarket", "prediction-markets", "uma", "x402", "ed25519", "predge"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

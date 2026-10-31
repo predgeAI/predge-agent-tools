@@ -1,7 +1,20 @@
 import { createHash, createPublicKey, verify as edVerify } from "node:crypto";
 
-/** Predge's published ed25519 attestation key (kid 13fa3d18a369e6c7). */
-export const PREDGE_ATTESTATION_PUBLIC_KEY = "13fa3d18a369e6c71bf941563ba47822b30182273d5106a0e8fb61c5016352d9";
+/**
+ * Predge's current ed25519 attestation key (kid 3b6551a6439b9bda), as published at
+ * https://api.predge.io/.well-known/predge-keys.json .
+ */
+export const PREDGE_ATTESTATION_PUBLIC_KEY = "3b6551a6439b9bda0de7e3b8dc89f276b2141fdfde310f762e663ab4ba2e9d1b";
+
+/**
+ * Keys Predge has revoked. A record signed with one of these never verifies, even if a caller
+ * passes it in `trustedKeys`. kid 13fa3d18a369e6c7 was revoked on 2026-10-21.
+ */
+export const PREDGE_REVOKED_KEYS: readonly string[] = [
+    "13fa3d18a369e6c71bf941563ba47822b30182273d5106a0e8fb61c5016352d9",
+];
+
+const isRevoked = (key: string) => PREDGE_REVOKED_KEYS.includes(key.toLowerCase());
 
 const ED25519_SPKI_PREFIX = "302a300506032b6570032100";
 const BODY_SIGNATURE_PREFIX = "predge-body-v1\n";
@@ -117,9 +130,12 @@ export function verifyPredgeRecord(
     if (!env) {
         return { valid: false, checks, error: "No signed envelope (canonical + signature) found" };
     }
-    const trusted = trustedKeys.map((k) => k.toLowerCase());
+    const trusted = trustedKeys.map((k) => k.toLowerCase()).filter((k) => !isRevoked(k));
     const key = String(env.public_key ?? "").toLowerCase();
     checks.trustedKey = trusted.includes(key);
+    if (isRevoked(key)) {
+        return { valid: false, kid: env.kid ?? key.slice(0, 16), checks, error: "Signed with a revoked Predge key" };
+    }
     // Verify with the trusted key only; a record signed by any other key fails.
     checks.signature = checks.trustedKey && verifyEd25519(env.canonical, env.signature, key);
     if (env.payload !== undefined) {
@@ -164,7 +180,7 @@ export function verifyBodySignature(
         }),
     );
     if (parts.alg !== "ed25519" || !parts.kid || !parts.sig) return false;
-    const key = trustedKeys.find((k) => k.toLowerCase().startsWith(parts.kid.toLowerCase()));
+    const key = trustedKeys.find((k) => !isRevoked(k) && k.toLowerCase().startsWith(parts.kid.toLowerCase()));
     if (!key) return false;
     return verifyEd25519(BODY_SIGNATURE_PREFIX + rawBody, parts.sig, key.toLowerCase());
 }

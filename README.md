@@ -1,6 +1,6 @@
 # Predge agent tools
 
-Framework adapters for the [Predge API](https://predge.io/docs). They give an agent a signed settlement-risk check for any Polymarket market (free, no key), offline verification of Predge records, and x402-paid Polymarket data.
+Dispute and refund verdicts for AI-agent payments, as framework tools for the [Predge API](https://predge.io/docs). An agent that paid for a call can ask for a signed verdict (`delivered` / `not_delivered` / `inconclusive`, with a refund recommendation) and re-read any verdict by id. Also: a signed settlement-risk check for any Polymarket market (free, no key), offline verification of Predge records, and x402-paid Polymarket data.
 
 | Package | Framework |
 |---|---|

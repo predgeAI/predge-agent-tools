@@ -4,6 +4,8 @@ import { type PredgeToolsOptions, resolveTools } from "../../../shared/tools";
 export * from "../../../shared/index";
 
 const KEYS: Record<string, string> = {
+    predge_request_verdict: "predgeRequestVerdict",
+    predge_get_verdict: "predgeGetVerdict",
     predge_get_settlement_risk: "predgeSettlementRisk",
     predge_verify_record: "predgeVerifyRecord",
     predge_get_settlement_estimate: "predgeSettlementEstimate",
@@ -14,9 +16,10 @@ const KEYS: Record<string, string> = {
  * Predge tools for the Vercel AI SDK.
  *
  * Free tools are always returned. Paid tools (x402, USDC on Base) are returned only when an `account` is given.
+ * The verdict tool is also returned with a Predge key (`apiKey` or env PREDGE_KEY; free pilot key at predge.io/start).
  *
  * @example
- * const { text } = await generateText({ model, tools: predgeTools(), prompt: "Is market 5608010 safe to settle?" });
+ * const { text } = await generateText({ model, tools: predgeTools({ apiKey: process.env.PREDGE_KEY }), prompt: "Was this paid call delivered?" });
  */
 export function predgeTools(options: PredgeToolsOptions = {}): ToolSet {
     const { api, signer, specs } = resolveTools(options);
